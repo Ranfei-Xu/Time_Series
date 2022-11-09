@@ -1,0 +1,188 @@
+---
+title: "MA585-HW7"
+author: "Ranfei Xu"
+date: "2022/3/29"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tseries)
+library(magrittr)
+library(forecast)
+library(dplyr)
+```
+
+# 1 
+
+```{r, out.width = '90%'}
+knitr::include_graphics("hw7-1.jpg")
+```
+
+\newpage
+
+# 2
+
+```{r}
+knitr::include_graphics("hw7-2.jpg")
+```
+
+\newpage
+
+# 3
+
+Simulate an AR(2) process with phi_1 = 1.5, phi_2 =  -0.75, and mu = 100. Simulate 100 values, but set aside the last 10 values to compare forecasts to actual values.
+
+(a) Using the first 90 observations in the series, find the MLE of the model parameters. Are the estimates comparable to the true values?
+```{r}
+set.seed(585)
+AR_sim = arima.sim(n=100, model = list(order = c(2,0,0), ar=c(1.5, -0.75))) + 100 
+train <- AR_sim[1:90]
+test  <- AR_sim[91:100]
+AR_auto = auto.arima(train)
+summary(AR_auto)
+# ar(train , method = "mle") # another method
+```
+
+Only use the obs. in training set, we got the result with MLE of the model parameters. And we can see the estimates are 1.4889 and -0.7414 which both not much different from the true values.
+
+(b) Use the fitted model to forecast the 10 future values and obtain 95% forecast intervals.
+
+```{r}
+# fit the model and apply forecast function
+fit = arima(train,order = c(2,0,0))
+forecast = forecast(fit, h = 10)
+plot(forecast)
+cat('The 95% forecasts intervals for 10 future values are \n lower:', as.numeric(forecast$lower[, '95%']), '\n upper:', as.numeric(forecast$upper[, '95%']) ) 
+```
+
+(c) What percentage of the observed values are covered by the forecast intervals?
+
+```{r}
+df = cbind(test, forecast$lower[, '95%'], forecast$upper[, '95%']) %>% as.data.frame()
+colnames(df) = c('observed' , 'lower',  'upper')
+df %<>%  mutate(covered_by_CI = if_else(observed>lower & observed<upper, "TRUE", "FALSE"))
+df
+```
+
+According to the table, we can see the percentage of the observed values are covered by the forecast intervals is 100%.
+
+(d) Simulate a new sample data of the same size from the sample model and repeat steps (a),(b) and (c)
+
+```{r}
+set.seed(1)  # simulate a new sample
+AR_sim = arima.sim(n=100, model = list(order = c(2,0,0), ar=c(1.5, -0.75))) + 100 
+train <- AR_sim[1:90]
+test  <- AR_sim[91:100]
+AR_auto = auto.arima(train)
+summary(AR_auto)
+# fit the model and apply forecast function
+fit = arima(train,order = c(2,0,0))
+forecast = forecast(fit, h = 10)
+plot(forecast)
+cat('The 95% forecasts intervals for 10 future values are \n lower:', as.numeric(forecast$lower[, '95%']), '\n upper:', as.numeric(forecast$upper[, '95%']) ) 
+df = cbind(test, forecast$lower[, '95%'], forecast$upper[, '95%']) %>% as.data.frame()
+colnames(df) = c('observed' , 'lower',  'upper')
+df %<>%  mutate(covered_by_CI = if_else(observed>lower & observed<upper, "TRUE", "FALSE"))
+df
+```
+
+By setting another set.seed, we generate a new sample for the original model, and get a similar but different estimates, which are also not much different from the true values. The result of the percentage of the observed values are covered by the forecast intervals is also 100%.
+ 
+ 
+# 4
+
+```{r}
+knitr::include_graphics("hw7-4.jpg")
+```
+
+
+# 5
+
+Consider the Johnson and Johnson Data from the 'HW_6'.
+
+(a) holt-winter forecast
+```{r}
+rm(list = ls())
+library(forecast)
+data("JohnsonJohnson")
+plot(JohnsonJohnson)
+
+
+fit <- HoltWinters(JohnsonJohnson, seasonal = "multiplicative")
+hwfast <- forecast(fit, h=8)
+# hwfast
+plot(hwfast)
+```
+
+(b) identifying the ARIMA model and forecast for the next eight values
+
+```{r}
+logjj <- log(JohnsonJohnson) # variance stabilizing transformation
+plot(logjj)
+
+# j1 <- diff(logjj, lag=4) # remove the seasonal component
+# plot(j1)
+# j2 <- diff(j1) # remove the trend component
+# plog(j2)
+
+jjd <- diff(diff(logjj, lag=4))
+plot(jjd)
+
+par(mfrow=c(1,2))
+acf(jjd)
+pacf(jjd)
+
+# could be ARIMA(4,1,2) or ARIMA(4,1,0)
+# Try ARIMA(4,1,2)
+par(mfrow=c(1,1))
+fit2 <- Arima(JohnsonJohnson, order = c(4,1,2), lambda = 0) # don't worry about the lambda
+armafcast <- forecast(fit2, h=8)
+# armafcast
+plot(armafcast)
+
+# Try ARIMA(4,1,0)
+fit3 <- Arima(JohnsonJohnson, order = c(4,1,0), lambda = 0)
+armafcast <- forecast(fit3, h=8)
+#armafcast
+plot(armafcast)
+```
+
+(c) Set aside the last eight observations in the data set as the validations sample and using the remaining data as the training sample, predict the eight observations. Compute RMSE, MAE and MAPE criteria of forecast comparison. What is your conclusion?
+
+```{r}
+train = JohnsonJohnson[1:(length(JohnsonJohnson)-8)]
+train = ts(train, frequency = 4, start = c(1960, 1))
+test = JohnsonJohnson[(length(JohnsonJohnson)-8+1): length(JohnsonJohnson)]
+test = ts(test, frequency = 4, start = c(1979, 1))
+
+# ARIMA forecast performance of JJ Data
+# Try ARIMA(4,1,2)
+fit3 <- Arima(train, order = c(4,1,2), lambda = 0) # don't worry about the lambda
+arimafcast <- forecast(fit3, h=8)
+err = test - arimafcast$mean  # errors 
+mae = mean(abs(err))  # mean absolute error
+rmse = sqrt(mean(err^2)) # root mean square error
+mape = mean (abs(err/test*100)) # mean absolute percentage error
+cat('\n(c):The RMSE, MAE and MAPE criteria of ARIMA(4,1,2) forecast')
+cat('\nMAE:', mae)
+cat('\nRMSE:', rmse)
+cat('\nMAPE:', mape)
+
+# Try ARIMA(4,1,0)
+fit4 <- Arima(train, order = c(4,1,0), lambda = 0) # don't worry about the lambda
+arimafcast <- forecast(fit4, h=8)
+err = test - arimafcast$mean  # errors 
+mae = mean(abs(err))  # mean absolute error
+rmse = sqrt(mean(err^2)) # root mean square error
+mape = mean (abs(err/test*100)) # mean absolute percentage error
+cat('\n(c):The RMSE, MAE and MAPE criteria of ARIMA(4,1,0) forecast')
+cat('\nMAE:', mae)
+cat('\nRMSE:', rmse)
+cat('\nMAPE:', mape)
+
+```
+
+
+
+

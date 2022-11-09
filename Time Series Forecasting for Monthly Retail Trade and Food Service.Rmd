@@ -1,0 +1,237 @@
+---
+title: "Time Series Forecasting for Monthly Retail Trade and Food Service"
+author: "Ranfei Xu"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,warning = FALSE, message = FALSE,fig.height=3, fig.width=10,fig.align = 'center') # out.width="0.9\\linewidth",dev="png",
+pacman::p_load(tseries, magrittr, forecast, dplyr, TSA, gridExtra)
+Sys.setenv(LANGUAGE = "en")
+```
+
+# Summary
+
+In the consumer industry that I am interested in, estimating future production/demand data based on historical data to prepare the supply chain is a crucial part of the company's operations. Because of the company's privacy, it is difficult to find the company's specific sales data, so I use the **Monthly Retail Trade and Food Service** data of U.S. published by the **United States Census Bureau** as the research object of this project. In particular, I focus on the **Restaurants and Other Eating Places** industry. And at last, I found that in my situation, Holt-Winters seasonal model performs slightly better than $SARIMA(0,1,1)\times (2,1,1)_{12}$. 
+
+The path of data is: https://www.census.gov/econ/currentdata/dbsearch?program=MRTS&startYear=2008&endYear=2022&categories=7225&dataType=SM&geoLevel=US&notAdjusted=1&submit=GET+DATA&releaseScheduleId=
+
+# Data Visualization
+```{r, fig.height=6, fig.width=10, fig.cap="Plots of Time Seires"}
+df <- read.csv("SeriesReport.csv")
+values <- df[, -1]  #(excluded first column i.e date in real dataset)
+
+par(mfrow=c(2,1))
+dt <- ts(values,start=c(2008,1),end=c(2022,2),frequency=12)
+plot.ts(dt, ylab="Millions of Dollars",xlab="")
+title(main = "01/2008 - 02/2022")
+
+# only keep data among 01/2010 - 02/2020
+dt <- ts(values,start=c(2010,1),end=c(2020,2),frequency=12)
+plot.ts(dt, ylab="Sales (Millions of Dollars)",xlab="") #
+title(main = "01/2010 - 02/2020")
+```
+\newpage 
+
+# Data Preparation
+
+The plots shown on the front page describe the data before and after I justified the length. Due to the impact of the pandemic, the data after 02/2022 is greatly affected by the policy which is hard to find the regular feature. And considering longer data is not always better than shorter data, so also to exclude the interference of premature data, I will describe the modeling procedure only using the data from **01/2010 to 02/2020**. 
+
+
+### Data Processing
+
+```{r}
+x <- dt
+adf.test(x)
+```
+
+The stable pattern of the variance of the data shown in figure[1] indicates that there is not necessary to apply the Box-Cox transformation to stabilize the variance. When carrying out the Dickey-Fuller test to check the unit root, the p-value is 0.02495 (smaller than 0.05) which confirms the process is stationary, which is a necessary condition for our analysis.
+
+### Classical Decomposition
+
+```{r, fig.cap="Decomposition of Time Series"}
+z <- decompose(x, type="additive")
+# decomp.plot function from lecture notes
+decomp.plot <- function(x, main = NULL, ...)
+{
+if(is.null(main))
+main <- ""
+#main <- paste("Decomposition of", x$type, "time series")
+plot(cbind(observed = x$random + if (x$type == "additive") x$trend + x$seasonal
+else x$trend * x$seasonal, trend = x$trend, seasonal = x$seasonal,
+random = x$random), main = main, ...)
+}
+decomp.plot(z) # ,main="Additive Decomposition of Sales Data"
+
+# plot ACF and PACF of 
+# par(mfrow=c(1,2))
+# acf(z$random, na.action = na.pass, lag.max=48, main = 'ACF of Random Part')
+# pacf(z$random, na.action = na.pass, lag.max=48, main = 'PACF of Random Part') 
+```
+
+Figure[2] shows the classical decomposition of the data. We can intuitively see that the trend and seasonal components are pulled out, which is consistent with the regular fluctuations of the PACF plot of raw data (Figure[3]). Thus, I choose the SARIMA model as my candidate model. And since the data is calculated monthly, I set the seasonal period as 12.
+
+
+# Modeling
+
+I first split the data into training and test data sets for calculating the forecast accuracy later, and fit the model only based on the training set.
+
+```{r,echo = TRUE, eval=FALSE}
+train <- ts(dt, start = c(2010,1), end = c(2018,12), frequency = 12)
+ test <- ts(dt, start = c(2019,1), end = c(2020,02), frequency = 12)
+```
+
+### Model-based Forecast: SARIMA
+
+```{r,fig.height=4, fig.width=10, fig.cap="Correlation Plots before and after Differenced"}
+# split the data 
+train <- ts(dt, start = c(2010,1), end = c(2018,12), frequency = 12)
+ test <- ts(dt, start = c(2019,1), end = c(2020,02), frequency = 12)
+ 
+# Identify the model from acf and pacf
+par(mfrow=c(2,2))
+ acf(train,lag.max = 36, main = "Original") 
+pacf(train,lag.max = 36, main = "Original") 
+
+train.1.12 <- diff(diff(train),12)
+ acf(train.1.12,lag.max = 36, main = "Differenced")
+pacf(train.1.12,lag.max = 36, main = "Differenced")
+```
+
+The plots of original data show that ACF decay to 0 and PACF cuts off after lag 2 with a significant spike at near lag 12 which suggests a seasonal AR(2) component. The plots of data after eliminate trend and seasonal component show that ACF cuts off after lag 1 and PACF cuts off after lag 2, so I choose to compare the following models:
+\par$SARIMA(0,1,2)\times (0,1,2)_{12}$ (returned from auto.arima()), $SARIMA(2,1,0)\times (2,1,1)_{12}$ (the initial model I choose), $SARIMA(2,1,0)\times (0,1,2)_{12}$, $SARIMA(2,1,2)\times (0,1,2)_{12}$, $SARIMA(0,1,2)\times (2,1,1)_{12}$, $SARIMA(0,1,1)\times (2,1,1)_{12}$\par 
+  
+```{r}
+# identify the model automatically
+# fitauto <- auto.arima(train) #ARIMA(0,1,2)(0,1,2)[12]
+# fitauto 
+fit0 <- Arima(train, order=c(0,1,2), seasonal=list(order=c(0,1,2),period=12), lambda=0)
+fit1 <- Arima(train, order=c(2,1,0), seasonal=list(order=c(2,1,1),period=12), lambda=0)
+fit2 <- Arima(train, order=c(2,1,0), seasonal=list(order=c(0,1,2),period=12), lambda=0)
+fit3 <- Arima(train, order=c(2,1,2), seasonal=list(order=c(0,1,2),period=12), lambda=0)
+fit4 <- Arima(train, order=c(0,1,2), seasonal=list(order=c(2,1,1),period=12), lambda=0)
+fit5 <- Arima(train, order=c(0,1,1), seasonal=list(order=c(2,1,1),period=12), lambda=0)
+
+# fit0$aicc
+# fit1$aicc
+# fit2$aicc
+# fit3$aicc
+# fit4$aicc
+# fit5$aicc
+```
+
+|Model|AICc|
+| :--:   |:-------:|
+|SARIMA(0,1,2)(0,1,2)[12]|-502.625|
+|SARIMA(2,1,0)(2,1,1)[12]|-503.8678|
+|SARIMA(2,1,0)(0,1,2)[12]|-502.0279|
+|SARIMA(2,1,2)(0,1,2)[12]|-499.2511|
+|SARIMA(0,1,2)(2,1,1)[12]|-504.4763|
+|SARIMA(0,1,1)(2,1,1)[12]|-504.7992|
+
+It turns out that $SARIMA(0,1,1)\times (2,1,1)_{12}$ has the lowest AICc. Then I check the coefficient estimations, and it turns out that the 95% CI does not across 0.
+
+```{r, fig.height=6, fig.width=10, fig.cap="Diagnostics of SARIMA Model"}
+# check CI
+fit5
+# model diagnostics
+tsdiag(fit5)
+```
+
+
+I also use the Ljung-Box test to apply the model diagnostics process. Figure[4] shows the P-value of the Ljung-Box test from lag 1 to lag 120 are all above the dashed line (0.05), thus we can conclude that the residuals of the model is white noise and it's safe to use $SARIMA(0,1,1)\times (2,1,1)_{12}$ for forecasting. The forecast of 01/2019 - 02/2020 by using 01/2010 - 12/2018 is shown in figure[5].
+
+
+```{r,  fig.cap="Forecast of SARIMA Model, Lag = 14"}
+set.seed(585)
+# model forecast
+fc <- forecast(fit5, h = 14)
+plot(fc,main = "")
+# accuracy(fc, test)
+```
+
+### Exponential Smoothing Based Forecast
+
+Since the time series has a seasonal component, another way to capture seasonality is using Holt-Winters seasonal method. After we fit the model and check the residuals, it turns out that the residuals is white noise, so it's safe to use this $\hat X_t(l)= \hat a_t +\hat b_t l + \hat s_{t+l-d}$ to predict the 14 values along with the forecast intervals and calculate the accuracy.
+
+```{r,  fig.cap="Diagnostics of Holt-Winters Seasonal Model"}
+# train_ts <- ts(train, start = c(2018,1), frequency = 12) 
+fithw <- HoltWinters(train, seasonal='multiplicative') # multiplicative for seasonal forecast
+checkresiduals(fithw)
+```
+
+```{r, fig.cap="Forecast of Holt-Winters Seasonal Model, lag = 14"}
+fchw <- forecast(fithw, lag=14)
+plot(fchw,main = "")
+# accuracy(fchw, test)
+```
+
+# Model Comparison and Conclusions
+
+Based on the table below, comparing the test accuracy between different forecast methods, we can conclude that Holt-Winter seasonal model performs slightly better than $SARIMA(3, 1, 0)\times (1, 0, 0)_{12}$. From my perspective, since the Holt-Winters seasonal method comprises not only the forecast equation but also three smoothing equations (for the level $a_t$, for the trend $b_t$, and the seasonal component $s_t$), maybe moderate complexity can lead to more accurate.
+  
+  |Criteria|ARIMA|HoltWinters|
+  | :--:   |:-------:|:-------:|
+  |RMSE (Root Mean Squared Error)       |17493.2347|17141.3930|
+  |MAE  (Mean Absolute Error)           |17464.5758|17141.3930|
+  |MAPE (Mean Absolute Percentage Error)|54.084376 |52.991625 |
+  
+# Discussion about Futher Study
+
+Due to the pandemic, there were two significant sudden changes in the data after February 2020. Based on the real background, we found that these two-time points are related to the federal government's policy on restaurant opening status and the vaccine coverage.
+
+Since we are still in the unpredictable and repeated pandemics, it is still difficult to find regularities in the data after 02/2020 (the first outbreak of the pandemic). Thus I have not done **Intervention Analysis** for the time being, but I am still look forwarding to continuing to study this area.
+
+
+```{r}
+# library(TSA)
+# fitsubset <- armasubsets(train.1.12,nar = 15,nma = 15)
+# plot(fitsubset)
+# arima(train.1.12, order = c(13,0,2),fixed=c(NA,rep(0,11),rep(NA,4)))
+```
+
+
+
+```{r}
+# some draft
+# (b) Forecast 1: Use subset selection method to fit an ARIMA model to the data. Verify if the model is adequate. Forecast the 24 values along with the forecast intervals.
+
+# # subset selection
+# set.seed(585)
+# fit0 <- armasubsets(train, nar = 15, nma = 15)
+# plot(fit0)
+# 
+# # based on the first line of BIC plot
+# fit1 <- Arima(diff(train), order=c(13,0,2), fixed = c(0,rep(NA,2),rep(0,8),rep(NA,5))) #,method="ML"
+# fit1
+# fc1 <- forecast(fit1, h=24)
+# plot(fc1)
+# accuracy(fc1, test)
+
+# n <- length(dt)
+# train <- dt[1: (n-15)]
+# test  <- dt[(n-14): n]
+# fc0 <- forecast(fit0, h = 14) # if it is the best then apply forecast
+# plot(fc0)
+# accuracy(fc0, test)
+
+# # eliminate the trend
+# wo_trend <- diff(train)
+# # eliminate the seasonal component
+# wo_tr_ss <- diff(wo_trend, 12)
+# 
+# par(mfrow=c(2,2))
+# acf(wo_trend)
+# pacf(wo_trend)
+# acf(wo_tr_ss)
+# pacf(wo_tr_ss)
+```
+
+```{r, fig.height=6, fig.width=10, fig.cap="Correlation Plots of the Time Seires"}
+# par(mfrow=c(2,1))
+#  acf(dt,lag.max=40, main = "ACF of the Time Series") 
+# pacf(dt,lag.max=40,main = "PACF of the Time Series") 
+```
+
+

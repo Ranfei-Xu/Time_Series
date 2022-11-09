@@ -1,0 +1,139 @@
+---
+title: "MA585-HW6"
+author: "Ranfei Xu"
+date: "2022/3/23"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(TSA)
+library(xts)
+library(tseries)
+```
+
+# 1
+
+### a. Plot the data. Describe the features of the data. Do the data look stationary? Explain your answer.
+```{r}
+plot.ts(JohnsonJohnson, main='JohnsonJohnson')
+```
+
+This time series plot seems not stationary, since it has an obvious trend pattern and the variance seems to change over the time.
+
+### b. Apply an appropriate variance stabilizing transformation, if necessary.
+```{r}
+x <- log(JohnsonJohnson)
+plot.ts(x, main = 'log(JohnsonJohnson)')
+```
+
+After I apply a log transformation, the variance seems to be stabilized. 
+
+### c. Carry out classical decomposition of the data, plot the transformed series along with the ACF and PACF.
+```{r}
+z <- decompose(x, type="additive")
+
+# decomp.plot function from lecture notes
+decomp.plot <-  function(x, main = NULL, ...) 
+{ 
+  if(is.null(main)) 
+    main <-  paste("Decomposition of", x$type, "time series") 
+  plot(cbind(observed = x$random + if (x$type == "additive") 
+    x$trend + x$seasonal 
+    else x$trend * x$seasonal, trend = x$trend, seasonal = x$seasonal, 
+    random = x$random), main = main, ...) 
+} 
+decomp.plot(z,main="Additive Decomposition of log(JohnsonJohnson) Data") 
+
+# plot ACF and PACF
+par(mfrow=c(1,2))
+acf(z$random, na.action = na.pass, lag.max=20, main = 'ACF of Random Part')
+pacf(z$random, na.action = na.pass, lag.max=20, main = 'PACF of Random Part')
+```
+
+
+### d. Identify an ARMA model for the transformed data.
+
+
+
+```{r}
+# Check with EACF
+TSA::eacf(na.omit(z$random))
+```
+According to the ACF and PACF plots, we can see ACF cuts-off after lag 1, and PACF cuts-off after lag 3. So the model might be  MA(1), AR(3), or ARMA(3,1). Based on the result of EACF table, the model is more likely to be MA(1).
+
+
+
+### e. Repeat c and d, but instead of classical decomposition, use differencing to make the data stationary.
+
+```{r}
+# differencing with k=1
+x1 <- diff(x)
+plot.ts(x1, main = 'log(JohnsonJohnson) (Differencing k=1)')
+
+# plot ACF and PACF
+par(mfrow=c(1,2)) 
+acf(x1, na.action = na.pass, lag.max=20, main = 'ACF after Differencing(k=1)')
+pacf(x1, na.action = na.pass, lag.max=20, main = 'PACF after Differencing(k=1)')
+
+# check EACF
+TSA::eacf(x1)
+```
+
+According to the ACF and PACF plots, we can see ACF decays to zero, and PACF cuts-off after lag 3 (significantly. So the model might be AR(3). The result of EACF table is a valid proof.
+
+# 2 
+
+Consider the time series of the numbers of users connected to the Internet through a server every minute (R data WWWusage). Carry out a test for unit root. Apply necessary transformation and identify plausible ARMA models.
+
+```{r}
+x <- WWWusage
+adf.test(x)
+```
+
+The result of Augmented Dickey-Fuller Test shows that p-value = 0.310, which fails to reject H0, thus the process is not stationary. So I apply a log transformation for WWWusage data.
+
+```{r}
+# log transformation
+x1 <- log(WWWusage)
+adf.test(x1)
+# still fail to reject H0, try differencing
+
+
+```
+
+The result of Augmented Dickey-Fuller Test shows that p-value = 0.2622, which still fails to reject H0, thus I apply differencing transformation to stationary the data.
+
+```{r}
+# apply differencing with k=2
+x2 <- diff(diff(WWWusage))
+adf.test(x2)
+```
+
+After apply second order difference, the result of Augmented Dickey-Fuller Test finally shows a p-value which is small enough to reject H0. Thus the process is stationary now.
+
+```{r}
+par(mfrow=c(2,2)) 
+plot.ts(x2)
+acf(x2, lag.max=20, main = 'ACF after Differencing (k=2)')
+pacf(x2, lag.max=20, main = 'ACF after Differencing (k=2)')
+```
+
+According to the ACF and PACF plots, the WWWusage data after second order difference might be an ARMA(0,0) process, which means it might be a white noise process.
+
+
+
+# 6 (f.) 
+
+Write a R code generate a random sample of size 500 from the AR(1) process with phi = 0.6 and sigma^2 = 0.8, Plot the simulated series along with the sample ACF and PACF of the series. Is the sample ACF and PACF consistent with AR(1)?
+```{r}
+# simulate AR(1) process
+AR1.sm <- list(order = c(1,0,0), ar = 0.6, sd = sqrt(0.8))
+x <- arima.sim(n=500, AR1.sm)
+plot.ts(x, main = 'simulated AR(1)')
+par(mfrow=c(1,2))
+acf(x, main = 'ACF of simulated series')
+pacf(x, main = 'PACF of simulated series')
+```
+
+As we can see, the ACF decay to zero with a damped sine wave, and the PACF cuts-off after lag 1, that exactly consistent with AR(1) process.

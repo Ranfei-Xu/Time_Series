@@ -1,0 +1,128 @@
+---
+title: "MA585-HW8"
+author: "Ranfei Xu"
+date: "2022/4/27"
+output: pdf_document
+---
+
+```{r setup,include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(dplyr, kableExtra, TSA, forecast)
+# library(tseries)
+# library(magrittr)
+# library(dplyr)
+```
+
+
+3(a)
+
+```{r}
+par(mfrow=c(1,2))
+plot(ARMAacf(ar = c(0.6), ma = c(0.4, rep(0,10), 0.8),lag.max=48)[-1],type="h",ylim=c(-0.5,0.5),ylab="ACF",xlab="lag")
+abline(h=0)
+plot(ARMAacf(ar = c(0.6), ma = c(0.4, rep(0,10), 0.8),lag.max=48,pacf=T),type="h",ylim=c(-0.5,0.5),ylab="PACF",xlab="lag")
+```
+
+3(b)
+```{r}
+par(mfrow=c(1,2))
+plot(ARMAacf(ma = c(0.4, rep(0,10), 0.8, 0.32), lag.max=48)[-1],type="h",ylim=c(-0.5,0.5),ylab="ACF",xlab="lag")
+abline(h=0)
+plot(ARMAacf(ma = c(0.4, rep(0,10), 0.8, 0.32), lag.max=48,pacf=T),type="h",ylim=c(-0.5,0.5), ylab="PACF",xlab="lag")
+```
+
+3(c)
+```{r}
+par(mfrow=c(1,2))
+plot(ARMAacf( ar = c(0.4, rep(0,10), 0.8, -0.32), lag.max=48)[-1],type="h",ylim=c(-0.5,0.5),ylab="ACF",xlab="lag")
+abline(h=0)
+plot(ARMAacf( ar = c(0.4, rep(0,10), 0.8, -0.32), lag.max=48,pacf=T),type="h",ylim=c(-0.5,0.5), ylab="PACF",xlab="lag")
+```
+
+4. Consider the co2 data in the dataset pacakage in R, which is Mauna Loa atmospheric CO2 Concentration. Set aside the last 24 observations as the test data and the rest as the training data.
+
+(a) Plot the data and apply Box-Cox transformation, if necessary. 
+```{r}
+data(co2)
+# co2
+plot(co2)
+```
+
+The stable patterns indicates that there is no need to apply Box-Cox transformation.
+
+(b) Forecast 1: Use subset selection method to fit an ARIMA model to the data. Verify if the model is adequate. Forecast the 24 values along with the forecast intervals.
+```{r}
+# split the data 
+n <- length(co2)
+train <- co2[1: (n-24)]
+test  <- co2[(n-23): n]
+
+# subset selection
+set.seed(585)
+fit0 <- armasubsets(train, nar = 15, nma = 15)
+plot(fit0)
+
+# based on the first line of BIC plot
+fit1 <- Arima(train, order=c(13,0,2), fixed = c(0,rep(NA,2),rep(0,8),rep(NA,5)))
+fit1
+fc1 <- forecast(fit1, h=24)
+plot(fc1)
+accuracy(fc1, test)
+```
+
+(b) Forecast 2: Now identify potential SARIMA models from ACF and PACF plots. Fit the candidate models and compare AICC to choose your final model. Use the model to Forecast the 24 values along with the forecast intervals.
+```{r}
+# eliminate the trend
+wo_trend <- diff(train)
+# eliminate the seasonal component
+wo_tr_ss <- diff(wo_trend, 12)
+
+par(mfrow=c(2,2))
+acf(wo_trend)
+pacf(wo_trend)
+acf(wo_tr_ss)
+pacf(wo_tr_ss)
+```
+
+Based on the ACF and PACF plots, I choose to compare the following models:
+  
+  $SARIMA(3, 1, 0)\times (1, 0, 0)_{12}$
+  
+  $SARIMA(1, 1, 1)\times (0, 1, 1)_{12}$
+  
+  $SARIMA(1, 1, 0)\times (0, 1, 1)_{12}$
+  
+  $SARIMA(0, 1, 1)\times (0, 1, 1)_{12}$
+  
+  
+```{r}
+fit2.1 <- Arima(train, order=c(3,1,0), seasonal=list(order=c(1,0,0),period=12), lambda=0)
+fit2.2 <- Arima(train, order=c(1,1,1), seasonal=list(order=c(0,1,1),period=12), lambda=0)
+fit2.3 <- Arima(train, order=c(1,1,0), seasonal=list(order=c(0,1,1),period=12), lambda=0)
+fit2.4 <- Arima(train, order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12), lambda=0)
+
+which.min(c(fit2.1$aicc,fit2.2$aicc,fit2.3$aicc,fit2.4$aicc))
+
+fc2 <- forecast(fit2.1, h = 24)
+plot(fc2)
+accuracy(fc2, test)
+```
+
+(b) Forecast 3: Use Holt-Winters seasonal forecasting method to predict the 24 values along with the forecast intervals.
+```{r}
+train_ts <- ts(train, start = c(1959,1), frequency = 12) 
+fit3 <- HoltWinters(train_ts, seasonal='additive')
+fc3 <- forecast(fit3, 24)
+plot(fc3)
+accuracy(fc3, test)
+```
+
+(c) Now complete the following table to compare between the forecasts: What is your conclusion?
+  
+  |Criteria|Forecast1|Forecast2|Forecast3|
+  | :--:   |:-------:|:-------:|:-------:|
+  |RMSE (Root Mean Squared Error)   |3.761315 |1.1464115|1.1975182|
+  |MAPE (Mean Average Percent Error)|1.3079401|0.2466061|0.3713509|
+  
+  Based on the results of accuracy, $SARIMA(3, 1, 0)\times (1, 0, 0)_{12}$ seems to be the best fit model.
+

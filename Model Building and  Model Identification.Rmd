@@ -1,0 +1,175 @@
+---
+title: "MA585-HW5"
+author: "Ranfei Xu"
+date: "2022/3/11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 1 & 2
+
+```{r, out.width = '90%'}
+knitr::include_graphics("hw5-1.jpg")
+```
+
+
+# 3
+
+(i) AR(2) : $X_t + 0.8X_{t-1} + 0.1X_{t-2} = e_t$
+
+For stationary, we need the characteristic roots lie outside the unit circle.
+
+```{r}
+# polyroot(c(1,0.8,0.1)) # check
+x=arima.sim(n=100, list(ar=c(0.8,0.1)))
+plot.ts(x)
+title(main=expression(X[t]==0.8*X[t-1]+0.1*X[t-2]+e[t]))
+
+par(mfrow=c(2,2))
+y = ARMAacf(ar=c(0.8,0.1),lag.max = 20); y = y[2:21]
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "ACF", main = "Population ACF")
+abline(h = 0)
+y = ARMAacf(ar=c(0.8,0.1),lag.max = 20,pacf=T)
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "Partial ACF", main = "Population PACF")
+abline(h = 0)
+acf(x,main="Sample ACF", ylim = c(-1,1))
+pacf(x,main="Sample PACF", ylim = c(-1,1))
+
+```
+
+(ii) ARMA(1,1) : $X_t - 0.5X_{t-1}= e_t - 0.5e_{t-1}$
+```{r}
+polyroot(c(1,-0.5))
+
+x=arima.sim(n=100, list(ar=c(0.5), ma=c(-0.5)))
+plot.ts(x)
+title(main=expression(X[t]-0.5*x[t-1]==e[t]-0.5*e[t-1]))
+
+par(mfrow=c(2,2))
+y = ARMAacf(ar=c(0.5), ma=c(-0.5),lag.max = 20); y = y[2:21]
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "ACF", main = "Population ACF")
+abline(h = 0)
+y = ARMAacf(ar=c(0.5), ma=c(-0.5),lag.max = 20,pacf=T)
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "Partial ACF", main = "Population PACF")
+abline(h = 0)
+
+acf(x,main="Sample ACF", ylim = c(-1,1))
+pacf(x,main="Sample PACF", ylim = c(-1,1))
+```
+
+(iii) MA(1) : $X_t = e_t-0.5e_{t-1}$ 
+
+For stationary, we need $|\theta| <1$.
+```{r}
+x=arima.sim(n=100, list(ma=c(-0.5)))
+plot.ts(x)
+title(main=expression(X[t]==e[t]-0.5*e[t-1]))
+
+par(mfrow=c(2,2))
+y = ARMAacf(ma=c(-0.5),lag.max = 20); y = y[2:21]
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "ACF", main = "Population ACF")
+abline(h = 0)
+y = ARMAacf(ma=c(-0.5),lag.max = 20,pacf=T)
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "Partial ACF", main = "Population PACF")
+abline(h = 0)
+
+acf(x,main="Sample ACF", ylim = c(-1,1))
+pacf(x,main="Sample PACF", ylim = c(-1,1))
+```
+
+(iv) ARMA(1,2) : $X_t+0.5X_{t-1} = e_t+0.8e_{t-1}+0.1e_{t-2}$
+```{r}
+# polyroot(c(1,-0.5))
+# polyroot(c(1,0.8,0.1))
+
+x=arima.sim(n=100, list(ar=c(-0.5), ma=c(0.8,0.1)))
+plot.ts(x)
+title(main=expression(X[t]-0.5*x[t-1]==e[t]+0.8*e[t-1]+0.1*e[t-2]))
+
+par(mfrow=c(2,2))
+y = ARMAacf(ar=c(-0.5), ma=c(0.8,0.1),lag.max = 20); y = y[2:21]
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "ACF", main = "Population ACF")
+abline(h = 0)
+y = ARMAacf(ar=c(-0.5), ma=c(0.8,0.1),lag.max = 20,pacf=T)
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "Partial ACF", main = "Population PACF")
+abline(h = 0)
+
+acf(x,main="Sample ACF", ylim = c(-1,1))
+pacf(x,main="Sample PACF", ylim = c(-1,1))
+```
+
+
+# 4
+
+```{r}
+knitr::include_graphics("hw5-4.jpg")
+```
+
+# 5 & 6
+
+```{r}
+knitr::include_graphics("hw5-5.jpg")
+```
+
+
+# 7
+
+(i) According to the time series plot, we can see a clear seasonal trend.
+```{r}
+plot.ts(sunspot.year, main = "Sunspot")
+```
+
+
+(ii) The square-root transformation is necessary, because it stabilize the variance of the change in time.
+```{r}
+newsunspot = sqrt(sunspot.year)
+plot.ts(newsunspot, main = "sqrt(Sunspot)")
+```
+
+(ii) Plot ACF and PACF of the transformed data. Based on these plots, propose a plausible model and justify your answer
+```{r}
+par(mfrow=c(1,2))
+acf(newsunspot, main = "ACF of sunspot series") # decay in sine wave9
+pacf(newsunspot, main = "PACF of sunspot series") # cuts off after lag 2
+
+# Assume the process is an AR(2) model,calculate phi_1 and phi_2 based on phi_11 and phi_22,
+(phi2 <- -0.6) # phi_22 = -0.6
+(phi1 <- 0.75*(1-phi2)) # phi_11 = 0.75
+
+# check stationary: causal and invertible
+polyroot(c(1,-1.2,0.6))
+
+# plot the ACF and PACF
+x=arima.sim(n=length(newsunspot), list(ar=c(1.2,-0.6)))
+plot.ts(x,main=expression(X[t]-1.2*x[t-1]+0.6*x[t-2]==e[t]))
+plot.ts(newsunspot, main = "Sunspot")
+
+par(mfrow=c(2,2))
+y = ARMAacf(ar=c(1.2,-0.6),lag.max = 20)
+y = y[2:21]
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "ACF", main = "Simulated Population ACF")
+abline(h = 0)
+y = ARMAacf(ar=c(1.2,-0.6),lag.max = 20,pacf=T)
+plot(y, x = 1:20, type = "h", ylim = c(-1,1), xlab = "h",
+ylab = "Partial ACF", main = "Simulated Population PACF")
+abline(h = 0)
+acf(x,main="Simulated Sample ACF", ylim = c(-1,1))
+pacf(x,main="Simulated Sample PACF", ylim = c(-1,1))
+
+# Check with EACF
+TSA::eacf(newsunspot)
+```
+At first, we assume the process is an AR(2) model based on the pattern of ACF and PACF plots, but the simulation of calculated parameters is not similar enough with the raw data, so we check the EACF table, and notice that it may also be an AR(2,1) model.
